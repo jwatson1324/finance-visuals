@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ledger Board</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: sketch order, left to right — monthly waterfall across the top, then categories (drop targets) | transactions | funds */
+:root {
+  --bg: #eef1f3;
+  --panel: #ffffff;
+  --ink: #18222b;
+  --muted: #5d6b77;
+  --line: #d3dae0;
+  --accent: #2f6f8f;      /* steel blue: income, interactive */
+  --accent-soft: #d6e6ee;
+  --spend: #6c7f8e;       /* spending steps */
+  --fund: #3d8a6a;        /* savings / funds */
+  --warn: #b7791f;
+  --bad: #b5443b;
+  --good: #3d8a6a;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-num: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12181d; --panel: #1a2229; --ink: #e3e9ee; --muted: #93a2ae; --line: #2c3842;
+    --accent: #6fb0cf; --accent-soft: #1f3542; --spend: #8597a5; --fund: #5fb68f;
+    --warn: #e0a645; --bad: #e0756b; --good: #5fb68f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12181d; --panel: #1a2229; --ink: #e3e9ee; --muted: #93a2ae; --line: #2c3842;
+  --accent: #6fb0cf; --accent-soft: #1f3542; --spend: #8597a5; --fund: #5fb68f;
+  --warn: #e0a645; --bad: #e0756b; --good: #5fb68f; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+header.top {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+  max-width: 1400px; margin: 0 auto 16px;
+}
+header.top h1 { font: 800 22px/1 var(--font-display); letter-spacing: -0.01em; margin: 0; }
+header.top .spacer { flex: 1; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button, select, input, .btn {
+  font: inherit; color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px;
+}
+button, .btn { cursor: pointer; }
+button:hover, .btn:hover { border-color: var(--accent); }
+button.primary, .btn.primary { background: var(--accent); color: var(--panel); border-color: var(--accent); font-weight: 600; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.badge {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+  padding: 3px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+}
+.badge.sample { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+main { max-width: 1400px; margin: 0 auto; display: grid; gap: 16px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.panel h2 {
+  font: 600 12px/1 var(--font-display); text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--muted); margin: 0 0 12px; display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+}
+.panel h2 .num { text-transform: none; letter-spacing: 0; color: var(--ink); font-size: 13px; }
+
+/* Summary strip */
+.summary { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-bottom: 12px; }
+.summary div { display: grid; gap: 2px; }
+.summary span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.summary b { font: 600 18px var(--font-num); font-variant-numeric: tabular-nums; }
+.pos { color: var(--good); } .neg { color: var(--bad); }
+
+.wf-wrap { overflow-x: auto; }
+.wf-wrap svg { display: block; width: 100%; min-width: 720px; height: auto; }
+.wf-wrap text { fill: var(--muted); font-family: var(--font-body); font-size: 11px; }
+.wf-wrap text.val { fill: var(--ink); font-family: var(--font-num); font-size: 10px; }
+
+.row3 { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, 0.9fr); align-items: start; }
+@media (max-width: 1100px) { .row3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .funds { grid-column: 1 / -1; } }
+@media (max-width: 720px) { .row3 { grid-template-columns: minmax(0, 1fr); } }
+
+/* Category tiles: hatched area = spent */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.tile {
+  position: relative; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px 10px;
+  overflow: hidden; cursor: pointer; min-height: 78px; display: grid; align-content: space-between; gap: 6px;
+  transition: border-color .12s, transform .12s;
+}
+.tile .fill {
+  position: absolute; left: 0; bottom: 0; right: 0; pointer-events: none;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--spend) 45%, transparent) 0 2px, transparent 2px 7px);
+  border-top: 1px solid color-mix(in srgb, var(--spend) 60%, transparent);
+}
+.tile.fund .fill { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--fund) 45%, transparent) 0 2px, transparent 2px 7px); border-top-color: var(--fund); }
+.tile.over .fill { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--bad) 45%, transparent) 0 2px, transparent 2px 7px); border-top-color: var(--bad); }
+.tile > * { position: relative; }
+.tile .name { font-weight: 600; font-size: 13px; }
+.tile .amt { font: 12px var(--font-num); color: var(--muted); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tile .amt b { color: var(--ink); font-weight: 600; }
+.tile input { width: 64px; padding: 1px 4px; font: 12px var(--font-num); background: transparent; }
+.tile.drop { border-color: var(--accent); transform: scale(1.03); background: var(--accent-soft); }
+.tile.target { border-style: dashed; border-color: var(--accent); }
+.tile.over .amt b { color: var(--bad); }
+.hint { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+
+/* Transactions */
+.tx-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.tx-tools input[type=search] { flex: 1; min-width: 120px; }
+.tx-tools label { font-size: 12px; color: var(--muted); display: flex; gap: 4px; align-items: center; }
+.tx-list { max-height: 560px; overflow-y: auto; border-top: 1px solid var(--line); }
+.tx {
+  display: grid; grid-template-columns: 22px 46px minmax(0, 1fr) auto; gap: 4px 8px; align-items: center;
+  padding: 7px 4px; border-bottom: 1px solid var(--line); cursor: grab;
+}
+.tx:hover { background: color-mix(in srgb, var(--accent-soft) 50%, transparent); }
+.tx.selected { background: var(--accent-soft); outline: 1px solid var(--accent); }
+.tx .mark { font: 600 14px var(--font-num); text-align: center; }
+.tx .mark.ok { color: var(--good); } .tx .mark.no { color: var(--bad); }
+.tx .date { font: 11px var(--font-num); color: var(--muted); }
+.tx .desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tx .amount { font: 13px var(--font-num); text-align: right; }
+.tx .amount.in { color: var(--good); }
+.tx select { grid-column: 3 / 5; font-size: 12px; padding: 2px 6px; justify-self: start; max-width: 100%; }
+.empty { color: var(--muted); padding: 20px 4px; }
+
+/* Funds: tall vertical bars */
+.fund-bars { display: flex; gap: 14px; align-items: flex-end; justify-content: space-around; height: 260px; padding-top: 20px; }
+.fbar { flex: 1; max-width: 70px; display: grid; grid-template-rows: auto 1fr auto; height: 100%; gap: 4px; text-align: center; }
+.fbar .track { position: relative; border: 1.5px solid var(--ink); border-bottom-width: 2px; border-radius: 3px 3px 0 0; overflow: hidden; }
+.fbar .lvl { position: absolute; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--fund) 70%, transparent); }
+.fbar .fee { position: absolute; left: 0; right: 0; background: repeating-linear-gradient(135deg, var(--bad) 0 2px, transparent 2px 5px); opacity: .7; }
+.fbar .pct { font: 600 11px var(--font-num); }
+.fbar .lbl { font-size: 12px; font-weight: 600; line-height: 1.2; min-height: 3.6em; }
+.fbar .lbl small { display: block; font: 400 10px var(--font-num); color: var(--muted); }
+details.cfg { margin-top: 14px; font-size: 12px; }
+details.cfg summary { cursor: pointer; color: var(--muted); }
+.cfg table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+.cfg td, .cfg th { padding: 3px 4px; text-align: left; }
+.cfg th { color: var(--muted); font-weight: 500; }
+.cfg input { width: 100%; font: 12px var(--font-num); padding: 2px 4px; }
+
+.dropzone {
+  border: 1.5px dashed var(--line); border-radius: 10px; padding: 10px 14px; color: var(--muted); font-size: 12px;
+  max-width: 1400px; margin: 0 auto 16px; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center;
+}
+.dropzone.active { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+.dropzone code { font-family: var(--font-num); font-size: 11px; }
+.toast { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--panel); padding: 8px 14px; border-radius: 6px; font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Ledger Board</h1>
+  <span class="badge sample" id="sampleBadge">Sample data</span>
+  <span class="spacer"></span>
+  <div class="controls">
+    <label for="month" class="badge">Month</label>
+    <select id="month"></select>
+    <label class="btn primary" for="csvInput">Import CSV</label>
+    <input type="file" id="csvInput" accept=".csv,text/csv" multiple hidden>
+    <button id="exportBtn" type="button">Export categorized CSV</button>
+    <button id="resetBtn" type="button">Reset</button>
+  </div>
+</header>
+
+<div class="dropzone" id="dropzone">
+  <span>Drop bank CSV exports anywhere on the page. Columns detected by header:</span>
+  <code>Date</code><code>Description / Payee / Memo</code><code>Amount</code><span>or</span><code>Debit + Credit</code>
+  <span>Data stays in this browser.</span>
+</div>
+
+<main>
+  <section class="panel" aria-labelledby="wfTitle">
+    <h2 id="wfTitle"><span id="wfMonthLabel">Monthly</span><span class="num" id="wfNote"></span></h2>
+    <div class="summary" id="summary"></div>
+    <div class="wf-wrap" id="waterfall"></div>
+  </section>
+
+  <div class="row3">
+    <section class="panel" aria-labelledby="catTitle">
+      <h2 id="catTitle"><span>Budget categories</span><span class="num" id="catTotal"></span></h2>
+      <div class="tiles" id="tiles"></div>
+      <p class="hint">Drag a transaction onto a category, or click a transaction then click a category. Hatched area = spent against budget. Assignments become rules for matching payees.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="txTitle">
+      <h2 id="txTitle"><span>Transactions</span><span class="num" id="txCount"></span></h2>
+      <div class="tx-tools">
+        <input type="search" id="txSearch" placeholder="Filter payee">
+        <label for="onlyUncat"><input type="checkbox" id="onlyUncat"> Uncategorized only</label>
+      </div>
+      <div class="tx-list" id="txList"></div>
+    </section>
+
+    <section class="panel funds" aria-labelledby="fundTitle">
+      <h2 id="fundTitle"><span>Funds</span><span class="num" id="fundTotal"></span></h2>
+      <div class="fund-bars" id="fundBars"></div>
+      <details class="cfg">
+        <summary>Edit balances and goals</summary>
+        <table><thead><tr><th>Fund</th><th>Start bal.</th><th>Goal</th><th>Fees YTD</th></tr></thead><tbody id="fundCfg"></tbody></table>
+      </details>
+    </section>
+  </div>
+</main>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+"use strict";
+const STORE_KEY = "ledger-board-v1";
+
+// ---------- Default configuration ----------
+const DEFAULT_CATEGORIES = [
+  // kind: spend | fund | income | transfer
+  { id: "giving",    name: "Giving",         kind: "spend", budget: 830 },
+  { id: "housing",   name: "Housing",        kind: "spend", budget: 1850 },
+  { id: "utilities", name: "Utilities",      kind: "spend", budget: 260 },
+  { id: "groceries", name: "Groceries",      kind: "spend", budget: 650 },
+  { id: "transport", name: "Transportation", kind: "spend", budget: 380 },
+  { id: "insurance", name: "Insurance",      kind: "spend", budget: 240 },
+  { id: "dining",    name: "Dining",         kind: "spend", budget: 200 },
+  { id: "health",    name: "Health",         kind: "spend", budget: 120 },
+  { id: "personal",  name: "Personal",       kind: "spend", budget: 150 },
+  { id: "misc",      name: "Misc",           kind: "spend", budget: 150 },
+  { id: "savings",   name: "Savings",        kind: "fund",  budget: 1200, start: 18400, goal: 30000, fees: 0 },
+  { id: "k401",      name: "401k",           kind: "fund",  budget: 0,    start: 64200, goal: 100000, fees: 212 },
+  { id: "vacation",  name: "Vacation",       kind: "fund",  budget: 300,  start: 1150, goal: 3500, fees: 0 },
+  { id: "vitamins",  name: "Vitamins etc.",  kind: "fund",  budget: 60,   start: 90, goal: 400, fees: 0 },
+  { id: "income",    name: "Income",         kind: "income" },
+  { id: "transfer",  name: "Transfer (ignore)", kind: "transfer" },
+];
+
+const DEFAULT_RULES = {
+  "employer payroll": "income", "grace community church": "giving", "compassion intl": "giving",
+  "oakridge apartments": "housing", "city power & light": "utilities", "metro water": "utilities",
+  "fiberlink internet": "utilities", "heb": "groceries", "costco": "groceries", "aldi": "groceries",
+  "shell": "transport", "exxon": "transport", "state farm": "insurance", "chick-fil-a": "dining",
+  "chipotle": "dining", "cvs pharmacy": "health", "transfer to hysa": "savings",
+  "transfer to vacation": "vacation", "amazon": null, "target": null, "venmo": null,
+};
+
+// ---------- Sample data (clearly marked) ----------
+function sampleTransactions() {
+  const rows = [];
+  const add = (d, desc, amt) => rows.push({ date: d, desc, amount: amt });
+  const months = [["2026-09", 30], ["2026-10", 31], ["2026-11", 6]];
+  let seed = 7;
+  const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  const r2 = x => Math.round(x * 100) / 100;
+  for (const [m, last] of months) {
+    const d = n => `${m}-${String(n).padStart(2, "0")}`;
+    const ifDay = (n, f) => { if (n <= last) f(d(n)); };
+    ifDay(1, x => add(x, "EMPLOYER PAYROLL DIRECT DEP", 3912.44));
+    ifDay(15, x => add(x, "EMPLOYER PAYROLL DIRECT DEP", 3912.44));
+    ifDay(2, x => add(x, "GRACE COMMUNITY CHURCH ONLINE", -782.49));
+    ifDay(3, x => add(x, "COMPASSION INTL SPONSOR", -43.00));
+    ifDay(1, x => add(x, "OAKRIDGE APARTMENTS RENT", -1825.00));
+    ifDay(5, x => add(x, "TRANSFER TO HYSA 4471", -1200.00));
+    ifDay(6, x => add(x, "TRANSFER TO VACATION 4472", -300.00));
+    ifDay(8, x => add(x, "CITY POWER & LIGHT", -r2(118 + rnd() * 40)));
+    ifDay(11, x => add(x, "METRO WATER UTIL", -r2(46 + rnd() * 12)));
+    ifDay(12, x => add(x, "FIBERLINK INTERNET", -70.00));
+    ifDay(18, x => add(x, "STATE FARM AUTO", -238.12));
+    for (const day of [4, 10, 17, 24, 29]) ifDay(day, x => add(x, rnd() > 0.4 ? "HEB #0442" : "ALDI 7731", -r2(90 + rnd() * 70)));
+    ifDay(20, x => add(x, "COSTCO WHSE #1121", -r2(140 + rnd() * 80)));
+    for (const day of [7, 19, 27]) ifDay(day, x => add(x, rnd() > 0.5 ? "SHELL OIL 5774" : "EXXON 88213", -r2(38 + rnd() * 18)));
+    for (const day of [9, 14, 22, 26]) ifDay(day, x => add(x, rnd() > 0.5 ? "CHICK-FIL-A #02210" : "CHIPOTLE 1834", -r2(11 + rnd() * 22)));
+    ifDay(13, x => add(x, "CVS PHARMACY 2210", -r2(14 + rnd() * 30)));
+    ifDay(16, x => add(x, "AMAZON MKTPLACE PMTS", -r2(25 + rnd() * 60)));
+    ifDay(4, x => add(x, "AMAZON MKTPLACE PMTS", -r2(20 + rnd() * 40)));
+    ifDay(21, x => add(x, "TARGET 00012", -r2(30 + rnd() * 50)));
+    ifDay(25, x => add(x, "VENMO PAYMENT", -r2(20 + rnd() * 40)));
+  }
+  return rows;
+}
+
+// ---------- State ----------
+let state;
+let selectedTx = null;
+
+function freshState() {
+  const s = { sample: true, categories: structuredClone(DEFAULT_CATEGORIES), rules: { ...DEFAULT_RULES }, tx: [] };
+  s.tx = sampleTransactions().map((t, i) => ({ ...t, id: "s" + i, cat: null }));
+  applyRules(s);
+  // leave a few uncategorized so the workflow is visible
+  return s;
+}
+function load() { try { const raw = localStorage.getItem(STORE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } }
+function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch {} }
+
+const cat = id => state.categories.find(c => c.id === id);
+const normDesc = s => s.toLowerCase().replace(/[#*]?\d[\d\s-]*/g, " ").replace(/\s+/g, " ").trim();
+function ruleFor(s, desc) {
+  const n = normDesc(desc);
+  if (n in s.rules) return s.rules[n];
+  for (const [k, v] of Object.entries(s.rules)) if (v && n.includes(k)) return v;
+  return null;
+}
+function applyRules(s) { for (const t of s.tx) if (!t.cat) t.cat = ruleFor(s, t.desc); }
+
+// ---------- CSV ----------
+function parseCSV(text) {
+  const rows = []; let row = [], field = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else q = false; }
+      else field += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); field = ""; if (row.some(v => v.trim() !== "")) rows.push(row); row = [];
+    } else field += c;
+  }
+  row.push(field); if (row.some(v => v.trim() !== "")) rows.push(row);
+  return rows;
+}
+function parseDate(s) {
+  s = s.trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (m) { const y = m[3].length === 2 ? "20" + m[3] : m[3]; return `${y}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`; }
+  const d = new Date(s); return isNaN(d) ? null : d.toISOString().slice(0, 10);
+}
+const parseMoney = s => {
+  if (s == null) return NaN; s = String(s).trim(); if (!s) return NaN;
+  const neg = /^\(.*\)$/.test(s) || /^-/.test(s) || /-$/.test(s);
+  const v = parseFloat(s.replace(/[^0-9.]/g, "")); return neg ? -v : v;
+};
+function importCSV(text, fileName) {
+  const rows = parseCSV(text); if (rows.length < 2) throw new Error(`${fileName}: no data rows found.`);
+  const h = rows[0].map(x => x.trim().toLowerCase());
+  const find = (...names) => h.findIndex(x => names.some(n => x === n || x.includes(n)));
+  const iDate = find("transaction date", "posted date", "posting date", "date");
+  const iDesc = find("description", "payee", "merchant", "name", "memo");
+  const iAmt = h.findIndex(x => x === "amount" || x.includes("amount"));
+  const iDebit = find("debit", "withdrawal"); const iCredit = find("credit", "deposit");
+  if (iDate < 0 || iDesc < 0 || (iAmt < 0 && iDebit < 0)) throw new Error(`${fileName}: need Date, Description and Amount (or Debit/Credit) columns. Found: ${rows[0].join(", ")}`);
+  const seen = new Map(state.tx.map(t => [t.key, true]));
+  const counts = {}; let added = 0;
+  for (const r of rows.slice(1)) {
+    const date = parseDate(r[iDate] || ""); if (!date) continue;
+    let amount = iAmt >= 0 ? parseMoney(r[iAmt]) : (parseMoney(r[iCredit]) || 0) - Math.abs(parseMoney(r[iDebit]) || 0);
+    if (isNaN(amount)) continue;
+    const desc = (r[iDesc] || "").trim();
+    const base = `${date}|${desc}|${amount.toFixed(2)}`;
+    counts[base] = (counts[base] || 0) + 1;
+    const key = `${base}|${counts[base]}`;
+    if (seen.has(key)) continue;
+    seen.set(key, true);
+    state.tx.push({ id: "t" + Date.now().toString(36) + added, key, date, desc, amount, cat: ruleFor(state, desc) });
+    added++;
+  }
+  return added;
+}
+async function handleFiles(files) {
+  if (state.sample) { state.tx = []; state.sample = false; }
+  let total = 0;
+  try {
+    for (const f of files) total += importCSV(await f.text(), f.name);
+    save(); fillMonths(true); render(); toast(`Imported ${total} transactions`);
+  } catch (e) { save(); fillMonths(true); render(); toast(e.message, 6000); }
+}
+function exportCSV() {
+  const esc = v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  const lines = ["Date,Description,Amount,Category"].concat(
+    [...state.tx].sort((a, b) => a.date.localeCompare(b.date))
+      .map(t => [t.date, esc(t.desc), t.amount.toFixed(2), esc(t.cat ? cat(t.cat)?.name || "" : "")].join(",")));
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "categorized-transactions.csv";
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+// ---------- Helpers ----------
+const fmt = (v, dp = 0) => (v < 0 ? "-" : "") + "$" + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+const $ = id => document.getElementById(id);
+const el = (tag, attrs = {}, html = "") => { const e = document.createElement(tag); Object.assign(e, attrs); if (html) e.innerHTML = html; return e; };
+const escapeHTML = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function toast(msg, ms = 2500) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, ms); }
+const currentMonth = () => $("month").value;
+const monthTx = () => state.tx.filter(t => t.date.startsWith(currentMonth()));
+function monthLabel(m) { const [y, mo] = m.split("-"); return new Date(+y, +mo - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" }); }
+
+function fillMonths(pickLatest) {
+  const sel = $("month"); const prev = sel.value;
+  const months = [...new Set(state.tx.map(t => t.date.slice(0, 7)))].sort().reverse();
+  if (!months.length) months.push(new Date().toISOString().slice(0, 7));
+  sel.innerHTML = months.map(m => `<option value="${m}">${monthLabel(m)}</option>`).join("");
+  sel.value = !pickLatest && months.includes(prev) ? prev : (state.sample && months.includes("2026-10") ? "2026-10" : months[0]);
+}
+
+function totals() {
+  const by = {}; let income = 0, uncat = 0;
+  for (const t of monthTx()) {
+    const c = t.cat ? cat(t.cat) : null;
+    if (!c) { if (t.amount < 0) uncat += -t.amount; else income += t.amount; continue; }
+    if (c.kind === "income") income += t.amount;
+    else if (c.kind === "transfer") continue;
+    else by[c.id] = (by[c.id] || 0) - t.amount;
+  }
+  return { by, income, uncat };
+}
+
+// ---------- Render: waterfall ----------
+function renderWaterfall() {
+  const { by, income, uncat } = totals();
+  const cats = state.categories.filter(c => c.kind === "spend" || c.kind === "fund");
+  const steps = cats.map(c => ({ label: c.name, v: by[c.id] || 0, budget: c.budget || 0, kind: c.kind })).filter(s => s.v || s.budget);
+  if (uncat) steps.push({ label: "Uncategorized", v: uncat, budget: 0, kind: "uncat" });
+  const spent = steps.reduce((a, s) => a + s.v, 0);
+  const left = income - spent;
+  const budgeted = cats.reduce((a, c) => a + (c.budget || 0), 0);
+
+  $("wfMonthLabel").textContent = monthLabel(currentMonth());
+  $("wfNote").textContent = state.sample ? "sample figures" : "";
+  $("summary").innerHTML = `
+    <div><span>Income</span><b>${fmt(income)}</b></div>
+    <div><span>Spent + saved</span><b>${fmt(spent)}</b></div>
+    <div><span>Left over</span><b class="${left >= 0 ? "pos" : "neg"}">${fmt(left)}</b></div>
+    <div><span>Budgeted</span><b>${fmt(budgeted)}</b></div>
+    <div><span>Giving rate</span><b>${income ? ((by.giving || 0) / income * 100).toFixed(1) + "%" : "–"}</b></div>`;
+
+  const W = 960, H = 300, padL = 56, padR = 12, padT = 18, padB = 74;
+  const n = steps.length + 2;
+  const top = Math.max(income, budgeted, spent, 1);
+  const bottom = Math.min(0, left);
+  const y = v => padT + (top - v) / (top - bottom) * (H - padT - padB);
+  const slot = (W - padL - padR) / n, bw = Math.min(46, slot * 0.68);
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const col = { spend: css("--spend"), fund: css("--fund"), uncat: css("--warn"), income: css("--accent"), line: css("--line"), bad: css("--bad"), ink: css("--ink") };
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Monthly waterfall: income minus each category">`;
+  // grid
+  const tickStep = niceStep((top - bottom) / 5);
+  for (let v = Math.ceil(bottom / tickStep) * tickStep; v <= top; v += tickStep) {
+    svg += `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="${col.line}" stroke-width="1"/>`;
+    svg += `<text x="${padL - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v)}</text>`;
+  }
+  svg += `<line x1="${padL}" x2="${W - padR}" y1="${y(0)}" y2="${y(0)}" stroke="${col.ink}" stroke-width="1"/>`;
+  const bar = (i, from, to, color, label, val, budget, hatch) => {
+    const x = padL + slot * i + (slot - bw) / 2;
+    const y1 = y(Math.max(from, to)), y2 = y(Math.min(from, to));
+    let s = `<rect x="${x}" y="${y1}" width="${bw}" height="${Math.max(1, y2 - y1)}" fill="${color}" ${hatch ? 'fill-opacity="0.85"' : ""} rx="2"/>`;
+    if (budget) { // budget ghost
+      const by1 = y(from), by2 = y(from - budget);
+      s += `<rect x="${x - 3}" y="${Math.min(by1, by2)}" width="${bw + 6}" height="${Math.abs(by2 - by1)}" fill="none" stroke="${col.ink}" stroke-opacity="0.35" stroke-dasharray="3 3"/>`;
+    }
+    s += `<text class="val" x="${x + bw / 2}" y="${y1 - 4}" text-anchor="middle">${fmt(val)}</text>`;
+    const lx = x + bw / 2, ly = H - padB + 14;
+    s += `<text x="${lx}" y="${ly}" text-anchor="end" transform="rotate(-38 ${lx} ${ly})">${escapeHTML(label)}</text>`;
+    return s;
+  };
+  svg += bar(0, 0, income, col.income, "Income", income);
+  let run = income;
+  steps.forEach((s, i) => {
+    const next = run - s.v;
+    const c = s.kind === "spend" && s.budget && s.v > s.budget ? col.bad : col[s.kind];
+    svg += `<line x1="${padL + slot * i + (slot + bw) / 2}" x2="${padL + slot * (i + 1) + (slot - bw) / 2}" y1="${y(run)}" y2="${y(run)}" stroke="${col.ink}" stroke-opacity="0.4" stroke-dasharray="2 2"/>`;
+    svg += bar(i + 1, run, next, c, s.label, s.v, s.budget);
+    run = next;
+  });
+  svg += `<line x1="${padL + slot * (n - 2) + (slot + bw) / 2}" x2="${padL + slot * (n - 1) + (slot - bw) / 2}" y1="${y(run)}" y2="${y(run)}" stroke="${col.ink}" stroke-opacity="0.4" stroke-dasharray="2 2"/>`;
+  svg += bar(n - 1, 0, left, left >= 0 ? col.fund : col.bad, "Left over", left);
+  svg += `</svg>`;
+  $("waterfall").innerHTML = svg;
+}
+function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(raw || 1))); const f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+
+// ---------- Render: category tiles ----------
+function renderTiles() {
+  const { by } = totals();
+  const wrap = $("tiles"); wrap.innerHTML = "";
+  let tb = 0, ts = 0;
+  for (const c of state.categories) {
+    const spent = by[c.id] || 0;
+    const isBudget = c.kind === "spend" || c.kind === "fund";
+    if (isBudget) { tb += c.budget || 0; ts += spent; }
+    const over = isBudget && c.kind === "spend" && c.budget && spent > c.budget;
+    const frac = isBudget && c.budget ? Math.min(1, spent / c.budget) : (spent ? 1 : 0);
+    const t = el("div", { className: `tile ${c.kind}${over ? " over" : ""}${selectedTx ? " target" : ""}`, tabIndex: 0 });
+    t.dataset.cat = c.id;
+    const right = isBudget
+      ? `<b>${fmt(spent)}</b> / <input type="number" min="0" step="10" id="bud-${c.id}" value="${c.budget || 0}" aria-label="${escapeHTML(c.name)} budget">`
+      : c.kind === "income" ? `<b>${fmt(monthTx().filter(x => x.cat === "income").reduce((a, x) => a + x.amount, 0))}</b>` : `<span>not counted</span>`;
+    t.innerHTML = `<div class="fill" style="height:${(frac * 100).toFixed(1)}%"></div><div class="name">${escapeHTML(c.name)}</div><div class="amt">${right}</div>`;
+    const inp = t.querySelector("input");
+    if (inp) {
+      inp.addEventListener("click", e => e.stopPropagation());
+      inp.addEventListener("change", () => { c.budget = Math.max(0, +inp.value || 0); save(); render(); });
+    }
+    t.addEventListener("dragover", e => { e.preventDefault(); t.classList.add("drop"); });
+    t.addEventListener("dragleave", () => t.classList.remove("drop"));
+    t.addEventListener("drop", e => { e.preventDefault(); t.classList.remove("drop"); assign(e.dataTransfer.getData("text/plain"), c.id); });
+    const pick = () => { if (selectedTx) { assign(selectedTx, c.id); selectedTx = null; render(); } };
+    t.addEventListener("click", pick);
+    t.addEventListener("keydown", e => { if (e.key === "Enter" && e.target === t) pick(); });
+    wrap.appendChild(t);
+  }
+  $("catTotal").textContent = `${fmt(ts)} of ${fmt(tb)}`;
+}
+
+function assign(txId, catId) {
+  const t = state.tx.find(x => x.id === txId); if (!t) return;
+  t.cat = catId;
+  const key = normDesc(t.desc);
+  state.rules[key] = catId;
+  let extra = 0;
+  for (const o of state.tx) if (!o.cat && normDesc(o.desc) === key) { o.cat = catId; extra++; }
+  save(); render();
+  toast(`${t.desc} → ${cat(catId).name}${extra ? ` (+${extra} matching)` : ""}`);
+}
+
+// ---------- Render: transactions ----------
+function renderTx() {
+  const q = $("txSearch").value.trim().toLowerCase();
+  const only = $("onlyUncat").checked;
+  const list = monthTx().filter(t => (!only || !t.cat) && (!q || t.desc.toLowerCase().includes(q)))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const all = monthTx(); const unc = all.filter(t => !t.cat).length;
+  $("txCount").textContent = `${all.length} rows, ${unc} uncategorized`;
+  const wrap = $("txList"); wrap.innerHTML = "";
+  if (!list.length) { wrap.innerHTML = `<div class="empty">${all.length ? "No transactions match the filter." : "No transactions this month. Import a CSV to get started."}</div>`; return; }
+  const opts = `<option value="">Uncategorized</option>` + state.categories.map(c => `<option value="${c.id}">${escapeHTML(c.name)}</option>`).join("");
+  for (const t of list) {
+    const r = el("div", { className: "tx" + (selectedTx === t.id ? " selected" : ""), draggable: true });
+    r.innerHTML = `<span class="mark ${t.cat ? "ok" : "no"}" title="${t.cat ? "Categorized" : "Uncategorized"}">${t.cat ? "✓" : "✕"}</span>
+      <span class="date">${t.date.slice(5).replace("-", "/")}</span>
+      <span class="desc" title="${escapeHTML(t.desc)}">${escapeHTML(t.desc)}</span>
+      <span class="amount ${t.amount > 0 ? "in" : ""}">${fmt(t.amount, 2)}</span>
+      <select aria-label="Category for ${escapeHTML(t.desc)}" id="cat-${t.id}">${opts}</select>`;
+    const sel = r.querySelector("select"); sel.value = t.cat || "";
+    sel.addEventListener("click", e => e.stopPropagation());
+    sel.addEventListener("change", () => { if (sel.value) assign(t.id, sel.value); else { t.cat = null; save(); render(); } });
+    r.addEventListener("dragstart", e => { e.dataTransfer.setData("text/plain", t.id); e.dataTransfer.effectAllowed = "move"; });
+    r.addEventListener("click", () => { selectedTx = selectedTx === t.id ? null : t.id; render(); });
+    wrap.appendChild(r);
+  }
+}
+
+// ---------- Render: funds ----------
+function renderFunds() {
+  const funds = state.categories.filter(c => c.kind === "fund");
+  const contrib = id => state.tx.filter(t => t.cat === id && t.date.slice(0, 7) <= currentMonth()).reduce((a, t) => a - t.amount, 0);
+  const wrap = $("fundBars"); wrap.innerHTML = "";
+  let total = 0;
+  for (const f of funds) {
+    const bal = (f.start || 0) + contrib(f.id) - (f.fees || 0);
+    total += bal;
+    const pct = f.goal ? Math.min(1, Math.max(0, bal / f.goal)) : 0;
+    const feePct = f.goal && f.fees ? Math.min(1 - pct, f.fees / f.goal) : 0;
+    const b = el("div", { className: "fbar" });
+    b.innerHTML = `<div class="pct">${f.goal ? Math.round(bal / f.goal * 100) + "%" : ""}</div>
+      <div class="track" title="${escapeHTML(f.name)}: ${fmt(bal)} of ${fmt(f.goal || 0)} goal">
+        <div class="lvl" style="height:${pct * 100}%"></div>
+        ${feePct ? `<div class="fee" style="bottom:${pct * 100}%;height:${Math.max(feePct * 100, 1.5)}%" title="Fees YTD ${fmt(f.fees)}"></div>` : ""}
+      </div>
+      <div class="lbl">${escapeHTML(f.name)}<small>${fmt(bal)}</small></div>`;
+    wrap.appendChild(b);
+  }
+  $("fundTotal").textContent = fmt(total);
+  const cfg = $("fundCfg"); cfg.innerHTML = "";
+  for (const f of funds) {
+    const tr = el("tr");
+    tr.innerHTML = `<td>${escapeHTML(f.name)}</td>` + ["start", "goal", "fees"].map(k =>
+      `<td><input type="number" min="0" step="50" id="fund-${f.id}-${k}" data-k="${k}" value="${f[k] || 0}" aria-label="${escapeHTML(f.name)} ${k}"></td>`).join("");
+    tr.querySelectorAll("input").forEach(i => i.addEventListener("change", () => { f[i.dataset.k] = Math.max(0, +i.value || 0); save(); renderFunds(); }));
+    cfg.appendChild(tr);
+  }
+}
+
+function render() {
+  $("sampleBadge").hidden = !state.sample;
+  $("dropzone").hidden = false;
+  renderWaterfall(); renderTiles(); renderTx(); renderFunds();
+}
+
+// ---------- Wiring ----------
+$("month").addEventListener("change", () => { selectedTx = null; render(); });
+$("txSearch").addEventListener("input", renderTx);
+$("onlyUncat").addEventListener("change", renderTx);
+$("csvInput").addEventListener("change", e => { if (e.target.files.length) handleFiles([...e.target.files]); e.target.value = ""; });
+$("exportBtn").addEventListener("click", exportCSV);
+let resetArmed = false;
+$("resetBtn").addEventListener("click", () => {
+  if (!resetArmed) { resetArmed = true; $("resetBtn").textContent = "Click again to clear"; setTimeout(() => { resetArmed = false; $("resetBtn").textContent = "Reset"; }, 3000); return; }
+  resetArmed = false; $("resetBtn").textContent = "Reset";
+  state = freshState(); save(); fillMonths(true); render(); toast("Reset to sample data");
+});
+let dragDepth = 0;
+const dz = $("dropzone");
+window.addEventListener("dragenter", e => { if (e.dataTransfer.types.includes("Files")) { dragDepth++; dz.classList.add("active"); } });
+window.addEventListener("dragleave", e => { if (e.dataTransfer.types.includes("Files") && --dragDepth <= 0) { dragDepth = 0; dz.classList.remove("active"); } });
+window.addEventListener("dragover", e => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); });
+window.addEventListener("drop", e => {
+  if (!e.dataTransfer.files.length) return;
+  e.preventDefault(); dragDepth = 0; dz.classList.remove("active");
+  handleFiles([...e.dataTransfer.files].filter(f => /\.csv$/i.test(f.name) || f.type.includes("csv")));
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", renderWaterfall);
+
+state = load() || freshState();
+fillMonths(true);
+render();
+})();
+</script>
+</body>
+</html>
