@@ -1,0 +1,9 @@
+#!/bin/sh
+# Block personal finance data from ever being committed (this repo is public).
+bad=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^(data/|data\.js$|.*ledger-data.*\.zip$|.*\.csv$)')
+if [ -n "$bad" ]; then
+  echo "pre-commit: refusing to commit personal finance data:" >&2
+  echo "$bad" | sed 's/^/  /' >&2
+  echo "Unstage with: git restore --staged <file>" >&2
+  exit 1
+fi

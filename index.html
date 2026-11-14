@@ -78,7 +78,7 @@ main { max-width: 1400px; margin: 0 auto; display: grid; gap: 16px; }
 
 /* Summary strip */
 .summary { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-bottom: 12px; }
-.summary div { display: grid; gap: 2px; }
+.summary div { display: grid; gap: 2px; align-content: start; }
 .summary span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
 .summary b { font: 600 18px var(--font-num); font-variant-numeric: tabular-nums; }
 .pos { color: var(--good); } .neg { color: var(--bad); }
@@ -88,7 +88,7 @@ main { max-width: 1400px; margin: 0 auto; display: grid; gap: 16px; }
 .wf-wrap text { fill: var(--muted); font-family: var(--font-body); font-size: 11px; }
 .wf-wrap text.val { fill: var(--ink); font-family: var(--font-num); font-size: 10px; }
 
-.row3 { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, 0.9fr); align-items: start; }
+.row3 { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; }
 @media (max-width: 1100px) { .row3 { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .funds { grid-column: 1 / -1; } }
 @media (max-width: 720px) { .row3 { grid-template-columns: minmax(0, 1fr); } }
 
@@ -136,15 +136,23 @@ main { max-width: 1400px; margin: 0 auto; display: grid; gap: 16px; }
 .tx select { grid-column: 3 / 5; font-size: 12px; padding: 2px 6px; justify-self: start; max-width: 100%; }
 .empty { color: var(--muted); padding: 20px 4px; }
 
-/* Funds: tall vertical bars */
-.fund-bars { display: flex; gap: 14px; align-items: flex-end; justify-content: space-around; height: 260px; padding-top: 20px; }
-.fbar { flex: 1; max-width: 70px; display: grid; grid-template-rows: auto 1fr auto; height: 100%; gap: 4px; text-align: center; }
-.fbar .track { position: relative; border: 1.5px solid var(--ink); border-bottom-width: 2px; border-radius: 3px 3px 0 0; overflow: hidden; }
-.fbar .lvl { position: absolute; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--fund) 70%, transparent); }
-.fbar .fee { position: absolute; left: 0; right: 0; background: repeating-linear-gradient(135deg, var(--bad) 0 2px, transparent 2px 5px); opacity: .7; }
-.fbar .pct { font: 600 11px var(--font-num); }
-.fbar .lbl { font-size: 12px; font-weight: 600; line-height: 1.2; min-height: 3.6em; }
-.fbar .lbl small { display: block; font: 400 10px var(--font-num); color: var(--muted); }
+/* Savings + retirement chart */
+.sv-wrap { overflow-x: auto; }
+.sv-wrap svg { display: block; width: 100%; min-width: 360px; height: auto; }
+.sv-wrap text { fill: var(--muted); font-family: var(--font-body); font-size: 11px; }
+.sv-wrap text.val { fill: var(--ink); font-family: var(--font-num); font-size: 10px; }
+.sv-wrap text.head { fill: var(--ink); font-weight: 600; font-size: 12px; }
+/* Grouped tiles */
+.group { display: grid; gap: 6px; }
+.group + .group { margin-top: 12px; }
+.ghead { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--line); padding-bottom: 3px; }
+.ghead .num { font-weight: 400; color: var(--muted); }
+.ghead .num.over { color: var(--bad); }
+#tiles { display: block; }
+.tiles .group-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.tile { min-height: 62px; padding: 6px 8px 8px; }
+.tile .name { font-size: 12px; line-height: 1.25; }
+.plan-note { font-size: 11px; color: var(--warn); }
 details.cfg { margin-top: 14px; font-size: 12px; }
 details.cfg summary { cursor: pointer; color: var(--muted); }
 .cfg table { width: 100%; border-collapse: collapse; margin-top: 8px; }
@@ -201,11 +209,22 @@ details.cfg summary { cursor: pointer; color: var(--muted); }
     <div class="wf-wrap" id="waterfall"></div>
   </section>
 
+  <section class="panel" aria-labelledby="fundTitle">
+      <h2 id="fundTitle"><span>Savings &amp; retirement</span><span class="num" id="fundTotal"></span></h2>
+      <div class="sv-wrap" id="savings"></div>
+      <details class="cfg">
+        <summary>Edit bucket starting amounts and retirement balances</summary>
+        <table><thead><tr><th>Item</th><th>Amount</th></tr></thead><tbody id="fundCfg"></tbody></table>
+        <p class="hint">Savings total is the actual 360 Performance Savings balance. Each bucket = starting amount + deposits categorized to it. Unassigned = whatever is left.</p>
+      </details>
+    </section>
+
   <div class="row3">
     <section class="panel" aria-labelledby="catTitle">
-      <h2 id="catTitle"><span>Budget categories</span><span class="num" id="catTotal"></span></h2>
+      <h2 id="catTitle"><span>Budget</span><span class="num" id="catTotal"></span></h2>
+      <div id="planNote" class="plan-note" hidden></div>
       <div class="tiles" id="tiles"></div>
-      <p class="hint">Drag a transaction onto a category, or click a transaction then a category. Hatched area = spent against budget. Changes save in this browser; use "Copy my changes" and paste them to Claude to make them permanent.</p>
+      <p class="hint">Hatched area = spent against plan. Drag a transaction onto an item, or click a transaction then an item. Changes save in this browser; "Copy my changes" and paste them to Claude to make them permanent.</p>
     </section>
 
     <section class="panel" aria-labelledby="txTitle">
@@ -218,15 +237,6 @@ details.cfg summary { cursor: pointer; color: var(--muted); }
       <div class="tx-list" id="txList"></div>
     </section>
 
-    <section class="panel funds" aria-labelledby="fundTitle">
-      <h2 id="fundTitle"><span>Funds</span><span class="num" id="fundTotal"></span></h2>
-      <div class="fund-bars" id="fundBars"></div>
-      <details class="cfg">
-        <summary>Edit balances and goals</summary>
-        <table><thead><tr><th>Fund</th><th>Balance</th><th>Goal</th></tr></thead><tbody id="fundCfg"></tbody></table>
-        <p class="hint">Savings balance comes from the 360 Performance Savings export. 401k, Vacation and Vitamins etc. are entered by hand.</p>
-      </details>
-    </section>
   </div>
 </main>
 
@@ -236,33 +246,39 @@ details.cfg summary { cursor: pointer; color: var(--muted); }
 <script>
 (() => {
 "use strict";
-const STORE_KEY = "ledger-board-local-v2";
+const STORE_KEY = "ledger-board-local-v3";
 const L = window.LEDGER;
 const $ = id => document.getElementById(id);
 if (!L) {
   document.querySelector("main").innerHTML = `<section class="panel"><h2>No data</h2><p>data.js is missing. Run <code>python3 -I tools/ingest.py path/to/export.csv</code> to build it.</p></section>`;
   return;
 }
-
-// Local edits layered over the ledger: {overrides: {txId: catId}, budgets: {catId: n}, funds: {catId: {balance, goal}}}
+const blank = () => ({ overrides: {}, budgets: {}, buckets: {}, retirement: {} });
 let local = loadLocal();
-function loadLocal() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || { overrides: {}, budgets: {}, funds: {} }; } catch { return { overrides: {}, budgets: {}, funds: {} }; } }
+function loadLocal() { try { return { ...blank(), ...JSON.parse(localStorage.getItem(STORE_KEY)) }; } catch { return blank(); } }
 function saveLocal() { try { localStorage.setItem(STORE_KEY, JSON.stringify(local)); } catch {} }
 
-const categories = L.categories.map(c => ({ ...c }));
+const categories = L.categories;
 const accounts = Object.fromEntries(L.accounts.map(a => [a.id, a]));
 const cat = id => categories.find(c => c.id === id);
-const budgetOf = c => local.budgets[c.id] ?? c.budget ?? 0;
-const fundAccountOf = id => Object.values(accounts).find(a => a.fund === id);
+const groups = [...new Set(categories.map(c => c.group))].sort((a, b) => (a === "Transfers") - (b === "Transfers"));
+const SV = L.savings || { buckets: [], retirement: [] };
+
+// Plan: the month's EveryDollar plan, else the latest earlier plan, else the earliest plan.
+const planMonths = Object.keys(L.budgets || {}).sort();
+function planSource(m) { return planMonths.filter(x => x <= m).pop() || planMonths[0] || null; }
+function planFor(m, id) {
+  const lb = local.budgets[m]; if (lb && id in lb) return lb[id];
+  const src = planSource(m); return (src && L.budgets[src][id]) || 0;
+}
 
 function txCat(t) { return local.overrides[t.id] ?? t.cat; }
 function txFlow(t) {
-  const c = txCat(t);
-  if (c === t.cat) return t.flow;
-  // re-categorized locally: fund-linked accounts flip sign for fund categories
+  const c = txCat(t); if (c === t.cat) return t.flow;
   const acc = accounts[t.account];
-  return acc && acc.fund && c === acc.fund ? -t.amount : t.amount;
+  return acc && acc.fund && cat(c)?.kind === "fund" ? -t.amount : t.amount;
 }
+const kindOf = t => cat(txCat(t))?.kind;
 
 let selectedTx = null;
 const fmt = (v, dp = 0) => (v < 0 ? "-" : "") + "$" + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
@@ -272,13 +288,16 @@ function toast(msg, ms = 2500) { const t = $("toast"); t.textContent = msg; t.hi
 const curMonth = () => $("month").value;
 const monthTx = () => L.tx.filter(t => t.date.startsWith(curMonth()));
 const monthLabel = m => { const [y, mo] = m.split("-"); return new Date(+y, +mo - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" }); };
-const shortDate = d => { const [y, m, dd] = d.split("-"); return `${+m}/${+dd}`; };
+const shortDate = d => { const [, m, dd] = d.split("-"); return `${+m}/${+dd}`; };
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(raw || 1))); const f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
 
-function fillMonths() {
+function fillSelects() {
   const months = [...new Set(L.tx.map(t => t.date.slice(0, 7)))].sort().reverse();
   $("month").innerHTML = months.map(m => `<option value="${m}">${monthLabel(m)}${m === L.last?.slice(0, 7) ? " (to date)" : ""}</option>`).join("");
   $("acctFilter").innerHTML = `<option value="">All accounts</option>` + L.accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join("");
-  $("catFilter").innerHTML = `<option value="">All categories</option><option value="__none">Uncategorized</option>` + categories.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+  $("catFilter").innerHTML = `<option value="">All items</option><option value="__none">Uncategorized</option>` +
+    groups.map(g => `<optgroup label="${esc(g)}">` + categories.filter(c => c.group === g).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("") + `</optgroup>`).join("");
 }
 
 function totals() {
@@ -289,125 +308,135 @@ function totals() {
     if (c.kind === "income") income += f;
     else if (c.kind !== "transfer") by[c.id] = (by[c.id] || 0) - f;
   }
-  return { by, income, uncat };
+  const byGroup = {};
+  for (const [id, v] of Object.entries(by)) { const g = cat(id).group; byGroup[g] = (byGroup[g] || 0) + v; }
+  return { by, byGroup, income, uncat };
 }
+const groupPlan = (g, m) => categories.filter(c => c.group === g && (c.kind === "spend" || c.kind === "fund")).reduce((s, c) => s + planFor(m, c.id), 0);
 
 // ---------- Accounts ----------
 function renderAccounts() {
-  const wrap = $("accts"); wrap.innerHTML = "";
-  let cash = 0;
+  const wrap = $("accts"); wrap.innerHTML = ""; let cash = 0;
   for (const a of L.accounts) {
     const n = L.tx.filter(t => t.account === a.id && t.date.startsWith(curMonth()));
-    const net = n.reduce((s, t) => s + (cat(txCat(t))?.kind === "transfer" ? 0 : t.amount), 0);
-    const spent = n.filter(t => t.amount < 0 && cat(txCat(t))?.kind !== "transfer").reduce((s, t) => s - t.amount, 0);
+    const out = n.filter(t => t.amount < 0 && kindOf(t) !== "transfer").reduce((s, t) => s - t.amount, 0);
     if (a.balance != null && a.type !== "credit") cash += a.balance;
     const d = el("div", { className: `acct ${a.type}` });
     d.innerHTML = `<div class="aname">${esc(a.name)}</div>
       <div class="abal num">${a.balance != null ? fmt(a.balance, 2) : "–"}</div>
       <div class="ameta">${a.balance != null ? "balance as of " + shortDate(a.as_of) : a.type === "credit" ? "no balance in export" : ""}</div>
-      <div class="ameta num">${monthLabel(curMonth()).split(" ")[0]}: ${n.length} tx, ${fmt(spent)} out</div>`;
+      <div class="ameta num">${monthLabel(curMonth()).split(" ")[0]}: ${n.length} tx, ${fmt(out)} out</div>`;
     d.addEventListener("click", () => { $("acctFilter").value = $("acctFilter").value === a.id ? "" : a.id; renderTx(); });
     wrap.appendChild(d);
   }
   $("cashTotal").textContent = `${fmt(cash, 2)} in bank accounts`;
 }
 
-// ---------- Waterfall ----------
-function niceStep(raw) { const p = Math.pow(10, Math.floor(Math.log10(raw || 1))); const f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
-function renderWaterfall() {
-  const { by, income, uncat } = totals();
-  const cats = categories.filter(c => c.kind === "spend" || c.kind === "fund");
-  const steps = cats.map(c => ({ label: c.name, v: by[c.id] || 0, budget: budgetOf(c), kind: c.kind })).filter(s => s.v || s.budget);
-  if (uncat) steps.push({ label: "Uncategorized", v: uncat, budget: 0, kind: "uncat" });
-  const spent = steps.filter(s => s.kind !== "fund").reduce((a, s) => a + s.v, 0);
-  const saved = steps.filter(s => s.kind === "fund").reduce((a, s) => a + s.v, 0);
-  const left = income - spent - saved;
-  const budgeted = cats.reduce((a, c) => a + budgetOf(c), 0);
-
-  $("wfMonthLabel").textContent = monthLabel(curMonth());
-  $("wfNote").textContent = curMonth() === L.last.slice(0, 7) ? `through ${shortDate(L.last)}` : "";
-  $("summary").innerHTML = `
-    <div><span>Income</span><b>${fmt(income)}</b></div>
-    <div><span>Spent</span><b>${fmt(spent)}</b></div>
-    <div><span>Moved to savings</span><b class="${saved >= 0 ? "" : "neg"}">${fmt(saved)}</b></div>
-    <div><span>Unallocated</span><b class="${left >= 0 ? "pos" : "neg"}">${fmt(left)}</b></div>
-    <div><span>Budgeted</span><b>${fmt(budgeted)}</b></div>
-    <div><span>Giving rate</span><b>${income ? ((by.giving || 0) / income * 100).toFixed(1) + "%" : "–"}</b></div>`;
-
-  const W = 960, H = 300, padL = 60, padR = 12, padT = 18, padB = 74;
-  const n = steps.length + 2;
-  let run = income, hi = income, lo = 0;
-  for (const s of steps) { run -= s.v; hi = Math.max(hi, run, run + s.v); lo = Math.min(lo, run); }
-  hi = Math.max(hi, budgeted, 1); lo = Math.min(lo, left);
+// ---------- Generic waterfall SVG ----------
+// bars: [{label, from, to, color, val, ghost?: [from,to]}]
+function waterfallSVG(bars, { W = 960, H = 300, padL = 60, padB = 74, minW = 720 } = {}) {
+  const padR = 12, padT = 18, n = bars.length;
+  let hi = 1, lo = 0;
+  for (const b of bars) { hi = Math.max(hi, b.from, b.to, ...(b.ghost || [])); lo = Math.min(lo, b.from, b.to, ...(b.ghost || [])); }
   const y = v => padT + (hi - v) / (hi - lo) * (H - padT - padB);
   const slot = (W - padL - padR) / n, bw = Math.min(46, slot * 0.68);
-  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-  const col = { spend: css("--spend"), fund: css("--fund"), uncat: css("--warn"), income: css("--accent"), line: css("--line"), bad: css("--bad"), ink: css("--ink") };
-  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Monthly waterfall: income minus each category">`;
+  const ink = css("--ink"), line = css("--line");
+  let s = `<svg viewBox="0 0 ${W} ${H}" style="min-width:${minW}px" role="img">`;
   const ts = niceStep((hi - lo) / 5);
-  for (let v = Math.ceil(lo / ts) * ts; v <= hi; v += ts) {
-    svg += `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="${col.line}"/><text x="${padL - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v)}</text>`;
-  }
-  svg += `<line x1="${padL}" x2="${W - padR}" y1="${y(0)}" y2="${y(0)}" stroke="${col.ink}"/>`;
-  const bar = (i, from, to, color, label, val, budget) => {
+  for (let v = Math.ceil(lo / ts) * ts; v <= hi; v += ts) s += `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="${line}"/><text x="${padL - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v)}</text>`;
+  s += `<line x1="${padL}" x2="${W - padR}" y1="${y(0)}" y2="${y(0)}" stroke="${ink}"/>`;
+  bars.forEach((b, i) => {
     const x = padL + slot * i + (slot - bw) / 2;
-    const y1 = y(Math.max(from, to)), y2 = y(Math.min(from, to));
-    let s = `<rect x="${x}" y="${y1}" width="${bw}" height="${Math.max(1, y2 - y1)}" fill="${color}" rx="2"/>`;
-    if (budget) { const a = y(from), b = y(from - budget); s += `<rect x="${x - 3}" y="${Math.min(a, b)}" width="${bw + 6}" height="${Math.abs(b - a)}" fill="none" stroke="${col.ink}" stroke-opacity="0.35" stroke-dasharray="3 3"/>`; }
-    s += `<text class="val" x="${x + bw / 2}" y="${y1 - 4}" text-anchor="middle">${fmt(val)}</text>`;
+    const y1 = y(Math.max(b.from, b.to)), y2 = y(Math.min(b.from, b.to));
+    if (i > 0) s += `<line x1="${x - (slot - bw)}" x2="${x}" y1="${y(b.from === 0 ? bars[i - 1].to : b.from)}" y2="${y(b.from === 0 ? bars[i - 1].to : b.from)}" stroke="${ink}" stroke-opacity="0.4" stroke-dasharray="2 2"/>`;
+    s += `<rect x="${x}" y="${y1}" width="${bw}" height="${Math.max(1, y2 - y1)}" fill="${b.color}" rx="2"${b.dashed ? ` fill-opacity="0.15" stroke="${b.color}" stroke-dasharray="4 3"` : ""}/>`;
+    if (b.ghost) { const a = y(b.ghost[0]), c = y(b.ghost[1]); s += `<rect x="${x - 3}" y="${Math.min(a, c)}" width="${bw + 6}" height="${Math.abs(c - a)}" fill="none" stroke="${ink}" stroke-opacity="0.35" stroke-dasharray="3 3"/>`; }
+    s += `<text class="val" x="${x + bw / 2}" y="${y1 - 4}" text-anchor="middle">${b.valText ?? fmt(b.val)}</text>`;
     const lx = x + bw / 2, ly = H - padB + 14;
-    return s + `<text x="${lx}" y="${ly}" text-anchor="end" transform="rotate(-38 ${lx} ${ly})">${esc(label)}</text>`;
-  };
-  const conn = (i, v) => `<line x1="${padL + slot * i + (slot + bw) / 2}" x2="${padL + slot * (i + 1) + (slot - bw) / 2}" y1="${y(v)}" y2="${y(v)}" stroke="${col.ink}" stroke-opacity="0.4" stroke-dasharray="2 2"/>`;
-  svg += bar(0, 0, income, col.income, "Income", income);
-  run = income;
-  steps.forEach((s, i) => {
-    const next = run - s.v;
-    const c = s.kind === "spend" && s.budget && s.v > s.budget ? col.bad : col[s.kind];
-    svg += conn(i, run) + bar(i + 1, run, next, c, s.label, s.v, s.budget);
-    run = next;
+    s += `<text x="${lx}" y="${ly}" text-anchor="end" transform="rotate(-38 ${lx} ${ly})">${esc(b.label)}</text>`;
   });
-  svg += conn(n - 2, run) + bar(n - 1, 0, left, left >= 0 ? col.fund : col.bad, "Unallocated", left) + `</svg>`;
-  $("waterfall").innerHTML = svg;
+  return s + `</svg>`;
 }
 
-// ---------- Category tiles ----------
+// ---------- Monthly waterfall (by EveryDollar group) ----------
+function renderWaterfall() {
+  const m = curMonth(), { byGroup, income, uncat, by } = totals();
+  const spendGroups = groups.filter(g => categories.some(c => c.group === g && (c.kind === "spend" || c.kind === "fund")));
+  const steps = spendGroups.map(g => ({ g, v: byGroup[g] || 0, plan: groupPlan(g, m), fund: categories.some(c => c.group === g && c.kind === "fund") })).filter(s => s.v || s.plan);
+  if (uncat) steps.push({ g: "Uncategorized", v: uncat, plan: 0, uncat: true });
+  const saved = steps.filter(s => s.fund).reduce((a, s) => a + s.v, 0);
+  const spent = steps.filter(s => !s.fund).reduce((a, s) => a + s.v, 0);
+  const left = income - spent - saved;
+  const planIncome = categories.filter(c => c.kind === "income").reduce((s, c) => s + planFor(m, c.id), 0);
+  const planOut = spendGroups.reduce((s, g) => s + groupPlan(g, m), 0);
+  $("wfMonthLabel").textContent = monthLabel(m);
+  $("wfNote").textContent = m === L.last.slice(0, 7) ? `through ${shortDate(L.last)}` : "";
+  const giving = categories.filter(c => c.group === "Giving").reduce((s, c) => s + (by[c.id] || 0), 0);
+  $("summary").innerHTML = `
+    <div><span>Income</span><b>${fmt(income)}</b><span>plan ${fmt(planIncome)}</span></div>
+    <div><span>Spent</span><b>${fmt(spent)}</b></div>
+    <div><span>To savings</span><b>${fmt(saved)}</b></div>
+    <div><span>Unallocated</span><b class="${left >= 0 ? "pos" : "neg"}">${fmt(left)}</b></div>
+    <div><span>Planned out</span><b>${fmt(planOut)}</b></div>
+    <div><span>Giving rate</span><b>${income ? (giving / income * 100).toFixed(1) + "%" : "–"}</b></div>`;
+  const col = { spend: css("--spend"), fund: css("--fund"), warn: css("--warn"), income: css("--accent"), bad: css("--bad") };
+  const bars = [{ label: "Income", from: 0, to: income, val: income, color: col.income }];
+  let run = income;
+  for (const s of steps) {
+    bars.push({ label: s.g, from: run, to: run - s.v, val: s.v, ghost: s.plan ? [run, run - s.plan] : null,
+      color: s.uncat ? col.warn : s.fund ? col.fund : s.plan && s.v > s.plan ? col.bad : col.spend });
+    run -= s.v;
+  }
+  bars.push({ label: "Unallocated", from: 0, to: left, val: left, color: left >= 0 ? col.fund : col.bad });
+  $("waterfall").innerHTML = waterfallSVG(bars);
+}
+
+// ---------- Budget tiles grouped like EveryDollar ----------
 function renderTiles() {
-  const { by, income } = totals();
+  const m = curMonth(), { by, byGroup } = totals();
+  const src = planSource(m);
+  $("planNote").hidden = !src || src === m;
+  $("planNote").textContent = src && src !== m ? `No plan for ${monthLabel(m)} yet; showing ${monthLabel(src)} plan.` : "";
   const wrap = $("tiles"); wrap.innerHTML = "";
   let tb = 0, ts = 0;
-  for (const c of categories) {
-    const spent = by[c.id] || 0, isBudget = c.kind === "spend" || c.kind === "fund", b = budgetOf(c);
-    if (c.kind === "spend") { tb += b; ts += spent; }
-    const over = c.kind === "spend" && b && spent > b;
-    const frac = isBudget && b ? Math.min(1, Math.max(0, spent / b)) : 0;
-    const t = el("div", { className: `tile ${c.kind}${over ? " over" : ""}${selectedTx ? " target" : ""}`, tabIndex: 0 });
-    t.dataset.cat = c.id;
-    const right = isBudget
-      ? `<b>${fmt(spent)}</b> / <input type="number" min="0" step="25" id="bud-${c.id}" value="${b}" aria-label="${esc(c.name)} budget">`
-      : c.kind === "income" ? `<b>${fmt(income)}</b>` : `<span>not counted</span>`;
-    t.innerHTML = `<div class="fill" style="height:${(frac * 100).toFixed(1)}%"></div><div class="name">${esc(c.name)}</div><div class="amt">${right}</div>`;
-    const inp = t.querySelector("input");
-    if (inp) {
-      inp.addEventListener("click", e => e.stopPropagation());
-      inp.addEventListener("change", () => { local.budgets[c.id] = Math.max(0, +inp.value || 0); saveLocal(); render(); });
-    }
-    t.addEventListener("dragover", e => { e.preventDefault(); t.classList.add("drop"); });
-    t.addEventListener("dragleave", () => t.classList.remove("drop"));
-    t.addEventListener("drop", e => { e.preventDefault(); t.classList.remove("drop"); assign(e.dataTransfer.getData("text/plain"), c.id); });
-    const pick = () => { if (selectedTx) { const id = selectedTx; selectedTx = null; assign(id, c.id); } else { $("catFilter").value = $("catFilter").value === c.id ? "" : c.id; renderTx(); } };
-    t.addEventListener("click", pick);
-    t.addEventListener("keydown", e => { if (e.key === "Enter" && e.target === t) pick(); });
-    wrap.appendChild(t);
+  for (const g of groups) {
+    const items = categories.filter(c => c.group === g && c.kind !== "income");
+    const shown = items.filter(c => c.kind === "transfer" || planFor(m, c.id) || by[c.id]);
+    if (!shown.length) continue;
+    const gp = groupPlan(g, m), gs = byGroup[g] || 0, isXfer = items.every(c => c.kind === "transfer");
+    if (!isXfer) { tb += gp; ts += gs; }
+    const sec = el("div", { className: "group" });
+    sec.innerHTML = `<div class="ghead"><span>${esc(isXfer ? g + " (not counted)" : g)}</span>${isXfer ? "" : `<span class="num${gp && gs > gp ? " over" : ""}">${fmt(gs)} / ${fmt(gp)}</span>`}</div><div class="group-tiles"></div>`;
+    const gt = sec.querySelector(".group-tiles");
+    for (const c of shown) gt.appendChild(tile(c, m, by[c.id] || 0));
+    wrap.appendChild(sec);
   }
-  $("catTotal").textContent = `${fmt(ts)} of ${fmt(tb)} spent`;
+  $("catTotal").textContent = `${fmt(ts)} of ${fmt(tb)} planned`;
 }
-
+function tile(c, m, spent) {
+  const b = planFor(m, c.id), counted = c.kind === "spend" || c.kind === "fund";
+  const over = c.kind === "spend" && b && spent > b + 0.005;
+  const frac = counted && b ? Math.min(1, Math.max(0, spent / b)) : 0;
+  const t = el("div", { className: `tile ${c.kind}${over ? " over" : ""}${selectedTx ? " target" : ""}`, tabIndex: 0 });
+  t.innerHTML = `<div class="fill" style="height:${(frac * 100).toFixed(1)}%"></div><div class="name">${esc(c.name)}</div>
+    <div class="amt">${counted ? `<b>${fmt(spent)}</b> / <input type="number" min="0" step="5" id="bud-${c.id}" value="${Math.round(b * 100) / 100}" aria-label="${esc(c.name)} plan">` : "<span>not counted</span>"}</div>`;
+  const inp = t.querySelector("input");
+  if (inp) {
+    inp.addEventListener("click", e => e.stopPropagation());
+    inp.addEventListener("change", () => { (local.budgets[m] ||= {})[c.id] = Math.max(0, +inp.value || 0); saveLocal(); render(); });
+  }
+  t.addEventListener("dragover", e => { e.preventDefault(); t.classList.add("drop"); });
+  t.addEventListener("dragleave", () => t.classList.remove("drop"));
+  t.addEventListener("drop", e => { e.preventDefault(); t.classList.remove("drop"); assign(e.dataTransfer.getData("text/plain"), c.id); });
+  const pick = () => { if (selectedTx) { const id = selectedTx; selectedTx = null; assign(id, c.id); } else { $("catFilter").value = $("catFilter").value === c.id ? "" : c.id; renderTx(); } };
+  t.addEventListener("click", pick);
+  t.addEventListener("keydown", e => { if (e.key === "Enter" && e.target === t) pick(); });
+  return t;
+}
 function assign(txId, catId) {
   const t = L.tx.find(x => x.id === txId); if (!t) return;
   if (catId === t.cat) delete local.overrides[t.id]; else local.overrides[t.id] = catId;
-  saveLocal(); render();
-  toast(`${t.desc} → ${cat(catId).name}`);
+  saveLocal(); render(); toast(`${t.desc} → ${catId ? cat(catId).name : "Uncategorized"}`);
 }
 
 // ---------- Transactions ----------
@@ -417,14 +446,14 @@ function renderTx() {
   const list = all.filter(t => (!q || t.desc.toLowerCase().includes(q)) && (!af || t.account === af)
     && (!cf || (cf === "__none" ? !txCat(t) : txCat(t) === cf))).sort((a, b) => b.date.localeCompare(a.date) || a.amount - b.amount);
   const unc = all.filter(t => !txCat(t)).length;
-  const sum = list.filter(t => cat(txCat(t))?.kind !== "transfer").reduce((s, t) => s + t.amount, 0);
+  const sum = list.filter(t => kindOf(t) !== "transfer").reduce((s, t) => s + t.amount, 0);
   $("txCount").textContent = `${list.length} of ${all.length} · net ${fmt(sum, 2)} excl. transfers${unc ? ` · ${unc} uncategorized` : ""}`;
   const wrap = $("txList"); wrap.innerHTML = "";
   if (!list.length) { wrap.innerHTML = `<div class="empty">No transactions match the filters.</div>`; return; }
-  const opts = `<option value="">Uncategorized</option>` + categories.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("");
+  const opts = `<option value="">Uncategorized</option>` + groups.map(g => `<optgroup label="${esc(g)}">` + categories.filter(c => c.group === g).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("") + `</optgroup>`).join("");
   for (const t of list) {
     const c = txCat(t), edited = t.id in local.overrides;
-    const r = el("div", { className: "tx" + (selectedTx === t.id ? " selected" : "") + (cat(c)?.kind === "transfer" ? " xfer" : ""), draggable: true });
+    const r = el("div", { className: "tx" + (selectedTx === t.id ? " selected" : "") + (kindOf(t) === "transfer" ? " xfer" : ""), draggable: true });
     r.innerHTML = `<span class="mark ${c ? "ok" : "no"}" title="${c ? "Categorized" : "Uncategorized"}">${c ? "✓" : "✕"}</span>
       <span class="date">${shortDate(t.date)}</span>
       <span class="desc" title="${esc(t.raw)}">${esc(t.desc)}</span>
@@ -440,47 +469,50 @@ function renderTx() {
   }
 }
 
-// ---------- Funds ----------
-function renderFunds() {
-  const funds = categories.filter(c => c.kind === "fund");
-  const wrap = $("fundBars"); wrap.innerHTML = "";
-  let total = 0;
-  const vals = funds.map(f => {
-    const acc = fundAccountOf(f.id);
-    const lf = local.funds[f.id] || {};
-    const bal = acc && acc.balance != null ? acc.balance : (lf.balance ?? f.balance ?? 0);
-    const goal = lf.goal ?? f.goal ?? 0;
-    return { f, acc, bal, goal };
+// ---------- Savings buckets + retirement column ----------
+function bucketValues() {
+  const acc = accounts[SV.account];
+  const total = acc?.balance ?? 0;
+  const buckets = SV.buckets.map(b => {
+    const contrib = L.tx.filter(t => txCat(t) === b.id).reduce((s, t) => s - txFlow(t), 0);
+    const start = local.buckets[b.id] ?? b.start ?? 0;
+    return { ...b, start, contrib, amount: start + contrib };
   });
-  const scale = Math.max(1, ...vals.map(v => Math.max(v.bal, v.goal)));
-  for (const { f, acc, bal, goal } of vals) {
-    total += bal;
-    const pct = goal ? Math.min(1, bal / goal) : bal / scale;
-    const b = el("div", { className: "fbar" });
-    b.innerHTML = `<div class="pct">${goal ? Math.round(bal / goal * 100) + "%" : "no goal"}</div>
-      <div class="track" title="${esc(f.name)}: ${fmt(bal)}${goal ? " of " + fmt(goal) : ""}"><div class="lvl" style="height:${(pct * 100).toFixed(1)}%"></div></div>
-      <div class="lbl">${esc(f.name)}<small>${bal ? fmt(bal) : acc ? "–" : "enter below"}</small></div>`;
-    wrap.appendChild(b);
-  }
-  $("fundTotal").textContent = fmt(total);
+  const retirement = SV.retirement.map(r => ({ ...r, balance: local.retirement[r.id] ?? r.balance }));
+  return { acc, total, buckets, retirement };
+}
+function renderSavings() {
+  const { acc, total, buckets, retirement } = bucketValues();
+  const col = { fund: css("--fund"), accent: css("--accent"), muted: css("--muted"), bad: css("--bad") };
+  const assigned = buckets.reduce((s, b) => s + b.amount, 0), unassigned = total - assigned;
+  const bars = [{ label: "Savings total", from: 0, to: total, val: total, color: col.fund }];
+  let run = total;
+  for (const b of buckets) { bars.push({ label: b.name, from: run, to: run - b.amount, val: b.amount, color: col.accent }); run -= b.amount; }
+  bars.push({ label: "Unassigned", from: 0, to: unassigned, val: unassigned, color: unassigned >= 0 ? col.muted : col.bad });
+  const retTotal = retirement.reduce((s, r) => s + (r.balance || 0), 0);
+  const anyRet = retirement.some(r => r.balance != null && r.balance !== 0);
+  // Retirement: one stacked column, separated from savings by a gap slot
+  bars.push({ label: "", from: 0, to: 0, val: 0, valText: "", color: "transparent" });
+  bars.push({ label: "Retirement", from: 0, to: anyRet ? retTotal : total * 0.6, val: retTotal, valText: anyRet ? fmt(retTotal) : "add later", color: col.accent, dashed: !anyRet });
+  let svg = waterfallSVG(bars, { W: 960, H: 280, padL: 60, padB: 70, minW: 640 });
+  $("savings").innerHTML = svg + `<p class="hint">Savings as of ${acc?.as_of ? shortDate(acc.as_of) : "–"} (${esc(acc?.name || "")}). Retirement: ${retirement.map(r => `${esc(r.name)} ${r.balance != null ? fmt(r.balance) : "–"}`).join(" · ")}</p>`;
+  $("fundTotal").textContent = `${fmt(total)} savings${anyRet ? ` · ${fmt(retTotal)} retirement` : ""}`;
   const cfg = $("fundCfg"); cfg.innerHTML = "";
-  for (const { f, acc, bal, goal } of vals) {
+  const row = (label, id, val, note, onChange) => {
     const tr = el("tr");
-    tr.innerHTML = `<td>${esc(f.name)}</td>
-      <td>${acc ? `<span class="num">${fmt(bal, 2)}</span>` : `<input type="number" min="0" step="100" id="fund-${f.id}-balance" data-k="balance" value="${bal}" aria-label="${esc(f.name)} balance">`}</td>
-      <td><input type="number" min="0" step="100" id="fund-${f.id}-goal" data-k="goal" value="${goal}" aria-label="${esc(f.name)} goal"></td>`;
-    tr.querySelectorAll("input").forEach(i => i.addEventListener("change", () => {
-      (local.funds[f.id] ||= {})[i.dataset.k] = Math.max(0, +i.value || 0); saveLocal(); renderFunds();
-    }));
+    tr.innerHTML = `<td>${esc(label)}${note ? `<br><small class="num">${note}</small>` : ""}</td><td><input type="number" step="100" id="${id}" value="${val ?? ""}" placeholder="–" aria-label="${esc(label)}"></td>`;
+    tr.querySelector("input").addEventListener("change", e => { onChange(e.target.value === "" ? null : +e.target.value); saveLocal(); renderSavings(); render(); });
     cfg.appendChild(tr);
-  }
+  };
+  for (const b of buckets) row(`${b.name} (start)`, `bucket-${b.id}`, b.start, b.contrib ? `+ ${fmt(b.contrib)} deposits = ${fmt(b.amount)}` : "", v => { local.buckets[b.id] = v ?? 0; });
+  for (const r of retirement) row(r.name, `ret-${r.id}`, r.balance, "", v => { local.retirement[r.id] = v; });
 }
 
 function render() {
   $("asOf").textContent = `Data through ${shortDate(L.last)}`;
-  const nChanges = Object.keys(local.overrides).length + Object.keys(local.budgets).length + Object.keys(local.funds).length;
-  $("copyBtn").textContent = nChanges ? `Copy my changes (${nChanges})` : "Copy my changes";
-  renderAccounts(); renderWaterfall(); renderTiles(); renderTx(); renderFunds();
+  const n = Object.keys(local.overrides).length + Object.values(local.budgets).reduce((s, o) => s + Object.keys(o).length, 0) + Object.keys(local.buckets).length + Object.keys(local.retirement).length;
+  $("copyBtn").textContent = n ? `Copy my changes (${n})` : "Copy my changes";
+  renderAccounts(); renderWaterfall(); renderTiles(); renderTx(); renderSavings();
 }
 
 // ---------- Wiring ----------
@@ -490,7 +522,7 @@ $("copyBtn").addEventListener("click", () => {
   const overrides = Object.fromEntries(Object.entries(local.overrides).map(([id, c]) => {
     const t = L.tx.find(x => x.id === id); return [id, { cat: c, was: t?.cat ?? null, desc: t?.desc, date: t?.date, amount: t?.amount }];
   }));
-  const text = "Ledger Board changes:\n" + JSON.stringify({ overrides, budgets: local.budgets, funds: local.funds }, null, 1);
+  const text = "Ledger Board changes:\n" + JSON.stringify({ overrides, budgets: local.budgets, buckets: local.buckets, retirement: local.retirement }, null, 1);
   navigator.clipboard.writeText(text).then(() => toast("Copied. Paste it to Claude to make it permanent."))
     .catch(() => { const ta = el("textarea", { value: text, rows: 8, id: "copyFallback" }); ta.style.width = "100%"; document.querySelector("main").prepend(ta); ta.select(); toast("Clipboard blocked: text selected above, copy it manually.", 5000); });
 });
@@ -498,11 +530,11 @@ let resetArmed = false;
 $("resetBtn").addEventListener("click", () => {
   if (!resetArmed) { resetArmed = true; $("resetBtn").textContent = "Click again to discard"; setTimeout(() => { resetArmed = false; $("resetBtn").textContent = "Discard my changes"; }, 3000); return; }
   resetArmed = false; $("resetBtn").textContent = "Discard my changes";
-  local = { overrides: {}, budgets: {}, funds: {} }; saveLocal(); render(); toast("Local changes discarded");
+  local = blank(); saveLocal(); render(); toast("Local changes discarded");
 });
-matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", renderWaterfall);
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", render);
 
-fillMonths();
+fillSelects();
 render();
 })();
 </script>

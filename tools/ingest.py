@@ -5,6 +5,10 @@ Usage:
   python3 -I tools/ingest.py [export.csv ...]   # merge files (if any), then rebuild
   python3 -I tools/ingest.py --report           # rebuild and list uncategorized rows
 
+EveryDollar exports (MM-YYYY-EveryDollar-BudgetItems.csv / -Transactions.csv) can be passed
+alongside bank files: BudgetItems sets that month's plan and categories, Transactions sets
+per-transaction categories by matching account, amount and date.
+
 Supported formats (detected by header):
   Chase credit card   Transaction Date,Post Date,Description,Category,Type,Amount,Memo
   Chase checking      Details,Posting Date,Description,Amount,Type,Balance,Check or Slip #
@@ -67,7 +71,7 @@ def read_export(path):
             raise SystemExit(f"{path.name}: Chase card export, but no last-4 in filename (expected Chase####_...)")
         acct = f"chase-{m4.group(1)}"
         for r in body:
-            out.append(dict(date=parse_date(r["Transaction Date"]), account=acct, description=r["Description"].strip(),
+            out.append(dict(date=parse_date(r["Post Date"]), account=acct, description=r["Description"].strip(),
                             amount=money(r["Amount"]), card="", bank_category=r.get("Category", "").strip(), balance=None))
     elif h[:2] == ["Details", "Posting Date"]:
         if not m4:
@@ -80,7 +84,7 @@ def read_export(path):
                             balance=money(bal) if bal else None))
     elif "Card No." in h and "Debit" in h and "Credit" in h:
         for r in body:
-            out.append(dict(date=parse_date(r["Transaction Date"]), account="capone-card", description=r["Description"].strip(),
+            out.append(dict(date=parse_date(r["Posted Date"]), account="capone-card", description=r["Description"].strip(),
                             amount=round(money(r["Credit"]) - money(r["Debit"]), 2), card=r["Card No."].strip(),
                             bank_category=r.get("Category", "").strip(), balance=None))
     elif h[:2] == ["Account Number", "Transaction Description"]:
@@ -163,11 +167,107 @@ def clean_desc(s):
     return re.sub(r"\s{2,}", " ", s).strip()
 
 
-def categorize(r, rules, overrides, cfg):
+ED_ACCOUNTS = {"TOTAL CHECKING *7373": "chase-7373", "CREDIT CARD *1291": "chase-1291", "Quicksilver *3047": "capone-card",
+               "360 Checking *7035": "360-7035", "360 Performance Savings *8028": "360-8028"}
+
+
+def slug(s):
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
+
+
+def kind_for(group, item):
+    if group == "Income":
+        return "income"
+    if group == "Savings":
+        return "fund"
+    if item == "Card Payments":
+        return "transfer"
+    return "spend"
+
+
+def is_everydollar(path):
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        head = f.readline()
+    return head.startswith('"Group","Item"')
+
+
+def import_everydollar(paths, cfg):
+    """BudgetItems -> categories + monthly plan. Transactions -> per-transaction overrides,
+    matched to ledger rows by account, amount and date within 5 days (EveryDollar uses post dates)."""
+    cats = {c["id"]: c for c in cfg["categories"]}
+    budgets = cfg.setdefault("budgets", {})
+    overrides = load_json("overrides.json", {})
+    ledger = load_ledger()
+    taken = set(overrides)
+    for p in sorted(paths, key=lambda x: "Transactions" in Path(x).name):  # budgets first
+        m = re.search(r"(\d{2})-(\d{4})", Path(p).name)
+        if not m:
+            raise SystemExit(f"{Path(p).name}: EveryDollar file needs MM-YYYY in the name")
+        month = f"{m.group(2)}-{m.group(1)}"
+        with open(p, newline="", encoding="utf-8-sig") as f:
+            rows = list(csv.DictReader(f))
+        if "Planned" in rows[0]:
+            plan = {}
+            for r in rows:
+                cid = slug(r["Item"])
+                if cid not in cats:
+                    cats[cid] = {"id": cid, "name": r["Item"], "group": r["Group"], "kind": kind_for(r["Group"], r["Item"])}
+                plan[cid] = money(r["Planned"])
+            budgets[month] = plan
+            print(f"{Path(p).name}: plan for {month}, {len(plan)} items")
+            continue
+        matched, missed = 0, []
+        for r in rows:
+            cid = slug(r["Item"])
+            if cid not in cats:
+                cats[cid] = {"id": cid, "name": r["Item"], "group": r["Group"], "kind": kind_for(r["Group"], r["Item"])}
+            amt, acct = money(r["Amount"]), ED_ACCOUNTS.get(r["Account"].strip())
+            d0 = datetime.strptime(r["Date"], "%m/%d/%Y")
+            best = None
+            for t in ledger:
+                if t["id"] in taken or abs(float(t["amount"]) - amt) > 0.005 or (acct and t["account"] != acct):
+                    continue
+                gap = abs((datetime.strptime(t["date"], "%Y-%m-%d") - d0).days)
+                if gap <= 5 and (best is None or gap < best[0]):
+                    best = (gap, t)
+            if best:
+                overrides[best[1]["id"]] = cid
+                taken.add(best[1]["id"])
+                matched += 1
+            else:
+                missed.append((r, acct, amt, cid))
+        # Splits: several EveryDollar rows on one date/account that sum to one bank row.
+        groups = {}
+        for r, acct, amt, cid in missed:
+            groups.setdefault((r["Date"], acct), []).append((r, amt, cid))
+        still = []
+        for (date, acct), parts in groups.items():
+            total = round(sum(a for _, a, _ in parts), 2)
+            d0 = datetime.strptime(date, "%m/%d/%Y")
+            hit = next((t for t in ledger if t["id"] not in taken and abs(float(t["amount"]) - total) < 0.005
+                        and (not acct or t["account"] == acct) and len(parts) > 1
+                        and abs((datetime.strptime(t["date"], "%Y-%m-%d") - d0).days) <= 5), None)
+            if hit:
+                overrides[hit["id"]] = [[cid, a] for _, a, cid in parts]
+                taken.add(hit["id"])
+                matched += len(parts)
+            else:
+                still += [f"{r['Date']} {r['Merchant']} {a:.2f} [{r['Account'] or '?'}] -> {r['Item']}" for r, a, _ in parts]
+        print(f"{Path(p).name}: {matched}/{len(rows)} matched to bank rows")
+        for x in still:
+            print("  not in bank data:", x)
+    # keep config order: by group order of first appearance, transfer/other last
+    cfg["categories"] = list(cats.values())
+    save_json("overrides.json", overrides)
+    save_json("config.json", cfg)
+
+
+def categorize(r, rules, overrides, cfg, kinds):
     """Return (category, flow). flow is the amount from the budget's point of view:
     negative = money leaving the spending pool (spend or saved), positive = income/refund."""
     amt = float(r["amount"])
     fund = cfg["accounts"].get(r["account"], {}).get("fund")
+    day = int(r["date"][8:])
     if r["id"] in overrides:
         cat = overrides[r["id"]]
     else:
@@ -178,14 +278,20 @@ def categorize(r, rules, overrides, cfg):
             if rule.get("account"):
                 if rule["account"] != r["account"]:
                     continue
-            elif fund and rule["cat"] != "income":
+            elif fund and kinds.get(rule["cat"]) != "income":
+                continue
+            if "amount" in rule and abs(rule["amount"] - amt) > 0.005:
+                continue
+            if not rule.get("day_from", 1) <= day <= rule.get("day_to", 31):
                 continue
             if re.search(rule["match"], r["description"], re.I):
                 cat = rule["cat"]
                 break
-    if fund and cat not in ("income", "transfer"):
+        if cat is None and fund:
+            cat = fund
+    if fund and kinds.get(cat) == "fund":
         # deposits are contributions (leave the spending pool), withdrawals reduce the fund
-        return fund, -amt
+        return cat, -amt
     return cat, amt
 
 
@@ -193,30 +299,45 @@ def build(cfg, report=False):
     rules = load_json("rules.json", [])
     overrides = load_json("overrides.json", {})
     balances = load_json("balances.json", {})
+    kinds = {c["id"]: c["kind"] for c in cfg["categories"]}
+    for rule in rules:
+        if rule["cat"] not in kinds:
+            raise SystemExit(f"rules.json: unknown category {rule['cat']!r}")
     tx = []
     for r in load_ledger():
-        cat, flow = categorize(r, rules, overrides, cfg)
+        ov = overrides.get(r["id"])
+        if isinstance(ov, list):  # split: [[cat, amount], ...]
+            for i, (c, a) in enumerate(ov, 1):
+                sub = dict(r, id=f"{r['id']}-{i}", amount=f"{a:.2f}")
+                cat, flow = categorize(sub, rules, {sub["id"]: c}, cfg, kinds)
+                tx.append(dict(id=sub["id"], date=r["date"], account=r["account"], desc=clean_desc(r["description"]) + f" (split {i}/{len(ov)})",
+                               raw=r["description"], amount=a, flow=round(flow, 2), cat=cat, card=r["card"], src="manual"))
+            continue
+        cat, flow = categorize(r, rules, overrides, cfg, kinds)
         tx.append(dict(id=r["id"], date=r["date"], account=r["account"], desc=clean_desc(r["description"]),
-                       raw=r["description"], amount=float(r["amount"]), flow=round(flow, 2), cat=cat, card=r["card"]))
+                       raw=r["description"], amount=float(r["amount"]), flow=round(flow, 2), cat=cat, card=r["card"],
+                       src="manual" if r["id"] in overrides else "rule" if cat else None))
     accounts = [dict(id=k, **v, **balances.get(k, {})) for k, v in cfg["accounts"].items()]
     last = max((t["date"] for t in tx), default=None)
     payload = dict(generated=datetime.now().strftime("%Y-%m-%d %H:%M"), start=cfg["start_date"], last=last,
-                   accounts=accounts, categories=cfg["categories"], tx=tx)
+                   accounts=accounts, categories=cfg["categories"], budgets=cfg.get("budgets", {}),
+                   savings=cfg.get("savings", {}), tx=tx)
     (ROOT / "data.js").write_text("window.LEDGER = " + json.dumps(payload, separators=(",", ":")) + ";\n")
     unc = [t for t in tx if not t["cat"]]
     print(f"data.js: {len(tx)} transactions {cfg['start_date']}..{last}, {len(unc)} uncategorized")
     if report:
         for t in unc:
             print(f"  {t['id']}  {t['date']}  {t['account']:<12} {t['amount']:>10.2f}  {t['desc']}")
+        groups = {c["id"]: c.get("group", c["id"]) for c in cfg["categories"]}
         months = {}
         for t in tx:
-            c = t["cat"] or "UNCAT"
-            if c == "transfer":
+            if kinds.get(t["cat"]) == "transfer":
                 continue
+            g = groups.get(t["cat"], "UNCAT")
             m = months.setdefault(t["date"][:7], {})
-            m[c] = round(m.get(c, 0) - t["flow"], 2)
+            m[g] = round(m.get(g, 0) - t["flow"], 2)
         for m in sorted(months):
-            print(m, json.dumps(dict(sorted(months[m].items()))))
+            print(m, json.dumps(months[m]))
 
 
 def main(argv):
@@ -225,8 +346,12 @@ def main(argv):
     cfg = load_json("config.json", None)
     if cfg is None:
         raise SystemExit("data/config.json missing (restore it from the artifact, see CLAUDE.md)")
-    if paths:
-        merge(paths, cfg)
+    ed = [p for p in paths if is_everydollar(p)]
+    bank = [p for p in paths if p not in ed]
+    if bank:
+        merge(bank, cfg)
+    if ed:
+        import_everydollar(ed, cfg)
     build(cfg, report)
 
 

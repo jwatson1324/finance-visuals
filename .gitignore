@@ -1,2 +1,4 @@
 data/
 data.js
+*.csv
+ledger-data*.zip
