@@ -1,15 +1,12 @@
 # Ledger Board
 
-Single-file, offline personal finance board. Open `index.html` in a browser; no build, no server.
+Offline personal finance board: monthly waterfall, budget categories, transaction categorization, account balances and fund goals.
 
-- **Monthly waterfall**: income stepped down by each category and fund; dashed outline = budget, red = over budget.
-- **Budget categories**: hatched fill = spent vs budget. Budgets are editable in place.
-- **Transactions**: drag a row onto a category (or click row, then click category, or use the dropdown). Each assignment saves a payee rule and auto-applies it to matching rows.
-- **Funds**: Savings / 401k / Vacation / Vitamins etc. as fill-to-goal bars; fees shown as a hatched band.
+```
+python3 -I tools/ingest.py path/to/exports/*.csv   # merge exports into data/ and build data.js
+open index.html
+```
 
-## CSV import
-Drop one or more bank CSV exports on the page (or use Import CSV). Headers are auto-detected:
-`Date` (YYYY-MM-DD or MM/DD/YYYY), `Description`/`Payee`/`Memo`, and either `Amount` (negative = outflow) or `Debit` + `Credit`.
-Re-importing the same file skips duplicates. All data persists in browser localStorage only. Export writes a categorized CSV.
+Supported exports (detected by header): Chase checking, Chase credit card (filename must contain `Chase####`), Capital One card, Capital One 360 checking/savings. Overlapping exports are deduplicated. Categorization is regex rules in `data/rules.json` plus per-transaction overrides in `data/overrides.json`; budgets, accounts and start date live in `data/config.json`.
 
-Starts with clearly-marked sample data; the first import replaces it. Reset restores the sample.
+`data/` and `data.js` hold personal data and are gitignored. See CLAUDE.md for the update workflow.
